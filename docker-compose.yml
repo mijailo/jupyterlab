@@ -1,0 +1,67 @@
+version: '3'
+services:
+  nginx:
+    env_file: ./.env
+    image: nginx:1.21.3
+    container_name: nginx
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/ssl/certs
+    ports:
+      - 9090:8080
+    links:
+      - "jupyterhub"
+    networks:
+      - default
+    extra_hosts:
+      - "localnode:${IP_servidorRemoto}"
+  jupyterhub:
+    env_file: ./.env
+    build:
+      context: .
+      dockerfile: Dockerfile.jupyterhub
+      args:
+        DOCKER_JUPYTERHUB_IMAGE: ${DOCKER_JUPYTERHUB_IMAGE}
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    image: ${LOCAL_HUB_IMAGE}
+    container_name: ${LOCAL_HUB_IMAGE}
+    volumes: 
+      - "data:${DATA_VOLUME_CONTAINER}:rw" #Aca viven: jupyterhub_cookie_secret, jupyterhub-proxy.pid,  jupyterhub.sqlite
+      - "/var/run/docker.sock:/var/run/docker.sock:rw" #Enlazar Docker socket del host con contenedor
+      - "./jupyterhub_config.py:${JUPYTERHUB_CONFIG_PATH}/jupyterhub_config.py:ro"
+    environment:
+      # Los contenedores se van a esta red
+      DOCKER_NETWORK_NAME: ${DOCKER_NETWORK_NAME}
+      # JupyterHub lanza esta imagen (local) para usuarios
+      DOCKER_NOTEBOOK_IMAGE: ${LOCAL_NOTEBOOK_IMAGE}
+      # Punto de montaje (en el contenedor de cada usuario) para sus archivos.
+      DOCKER_NOTEBOOK_DIR: ${DOCKER_NOTEBOOK_DIR}
+      # Comando para lanzar alv los notebooks de usuarios
+      DOCKER_SPAWN_CMD: ${DOCKER_SPAWN_CMD}
+      # Punto de montaje (en los single_user) para datos compartidos
+      DOCKER_NOTEBOOK_SHARED_DIR: ${DOCKER_NOTEBOOK_SHARED_DIR}
+      # Volumen para datos compartidos (en los single_user)
+      SHARED_DATA_VOLUME: ${SHARED_DATA_VOLUME}
+    command: >
+        jupyterhub -f ${JUPYTERHUB_CONFIG_PATH}/jupyterhub_config.py
+    networks:
+      - default
+volumes:
+  data:
+    external:
+      name: ${DATA_VOLUME_HOST}
+networks:
+  default:
+    external:
+      name: ${DOCKER_NETWORK_NAME}
